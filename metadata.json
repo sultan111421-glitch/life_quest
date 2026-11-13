@@ -1,0 +1,6 @@
+{
+  "name": "LIFE QUEST — লাইফ কোয়েস্ট",
+  "description": "দৈনন্দিন জীবন, ইবাদত, পড়াশোনা, ব্যায়াম ও ব্যক্তিগত উন্নয়নের বাংলা আরপিজি গ্যামিফিকেশন ড্যাশবোর্ড।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1016 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidGroupInviteId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 192 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidInviteCode(code) {
+      return code is string && code.size() >= 6 && code.size() <= 32 && code.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUsername(uname) {
+      return uname is string && uname.size() >= 3 && uname.size() <= 24 && uname.matches('^[a-z0-9_]{3,24}$');
+    }
+
+    function isValidDateKey(dateKey) {
+      return dateKey is string && dateKey.size() == 10 && dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerifiedOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isFriendOf(userId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(userId)/friends/$(request.auth.uid));
+    }
+
+    function isGroupMember(groupId) {
+      return isSignedIn()
+        && isValidId(groupId)
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberUids;
+    }
+
+    function isGroupCreator(groupId) {
+      return isSignedIn()
+        && isValidId(groupId)
+        && get(/databases/$(database)/documents/groups/$(groupId)).data.creatorUid == request.auth.uid;
+    }
+
+    function isGroupAdmin(groupId) {
+      return isSignedIn()
+        && isValidId(groupId)
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isGroupAdminOrCreator(groupId) {
+      return isGroupCreator(groupId) || isGroupAdmin(groupId);
+    }
+
+    function hasAcceptedGroupInviteAfter(groupId, uid) {
+      return existsAfter(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + uid))
+        && getAfter(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + uid)).data.status == 'accepted'
+        && getAfter(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + uid)).data.toUid == uid
+        && getAfter(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + uid)).data.groupId == groupId;
+    }
+
+    function hasActiveGroupInviteLinkForGroup(groupId) {
+      return exists(/databases/$(database)/documents/groups/$(groupId))
+        && exists(/databases/$(database)/documents/groupInviteLinks/$(get(/databases/$(database)/documents/groups/$(groupId)).data.inviteCode))
+        && get(/databases/$(database)/documents/groupInviteLinks/$(get(/databases/$(database)/documents/groups/$(groupId)).data.inviteCode)).data.active == true
+        && get(/databases/$(database)/documents/groupInviteLinks/$(get(/databases/$(database)/documents/groups/$(groupId)).data.inviteCode)).data.groupId == groupId;
+    }
+
+    function isValidPrivacyMap(p) {
+      return p is map
+        && p.keys().hasAll(['visibility', 'showXp', 'showLevel', 'showAchievements', 'showStreaks', 'showWeeklyProgress', 'showMonthlyStats', 'leaderboardOptIn', 'leaderboardAnonymous'])
+        && p.keys().hasOnly([
+          'visibility', 'showXp', 'showLevel', 'showAchievements', 'showStreaks',
+          'showWeeklyProgress', 'showMonthlyStats', 'sharedCategories',
+          'leaderboardOptIn', 'leaderboardAnonymous', 'shareXpOnLeaderboard',
+          'shareStreakOnLeaderboard', 'shareWeeklyOnLeaderboard'
+        ])
+        && p.visibility in ['private', 'friends', 'public']
+        && p.showXp is bool
+        && p.showLevel is bool
+        && p.showAchievements is bool
+        && p.showStreaks is bool
+        && p.showWeeklyProgress is bool
+        && p.showMonthlyStats is bool
+        && p.leaderboardOptIn is bool
+        && p.leaderboardAnonymous is bool
+        && (!('shareXpOnLeaderboard' in p) || p.shareXpOnLeaderboard is bool)
+        && (!('shareStreakOnLeaderboard' in p) || p.shareStreakOnLeaderboard is bool)
+        && (!('shareWeeklyOnLeaderboard' in p) || p.shareWeeklyOnLeaderboard is bool)
+        && (!('sharedCategories' in p) || (p.sharedCategories is list && p.sharedCategories.size() <= 20 && !p.sharedCategories.hasAny(['spiritual', 'health'])));
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'baseXpPerLevel', 'xpGrowthStep', 'dailyBonusXp', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'username', 'bio', 'avatarId', 'email', 'language',
+          'baseXpPerLevel', 'xpGrowthStep', 'dailyBonusXp',
+          'onboardingCompleted', 'religionTrackingEnabled', 'remindersEnabled',
+          'enabledCategories', 'customCategories', 'personalGoals', 'privacy',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('username' in data) || isValidUsername(data.username))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 240))
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 254))
+        && (!('language' in data) || (data.language is string && data.language in ['en', 'bn']))
+        && data.baseXpPerLevel is number && data.baseXpPerLevel >= 50 && data.baseXpPerLevel <= 10000
+        && data.xpGrowthStep is number && data.xpGrowthStep >= 0 && data.xpGrowthStep <= 5000
+        && data.dailyBonusXp is number && data.dailyBonusXp >= 0 && data.dailyBonusXp <= 1000
+        && (!('onboardingCompleted' in data) || data.onboardingCompleted is bool)
+        && (!('religionTrackingEnabled' in data) || data.religionTrackingEnabled is bool)
+        && (!('remindersEnabled' in data) || data.remindersEnabled is bool)
+        && (!('enabledCategories' in data) || (data.enabledCategories is list && data.enabledCategories.size() <= 30))
+        && (!('customCategories' in data) || (data.customCategories is list && data.customCategories.size() <= 20))
+        && (!('personalGoals' in data) || (data.personalGoals is list && data.personalGoals.size() <= 10))
+        && (!('privacy' in data) || isValidPrivacyMap(data.privacy))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidActivity(data, userId, activityId) {
+      return data.keys().hasAll(['id', 'uid', 'title', 'category', 'inputType', 'unitLabel', 'dailyTarget', 'xpReward', 'order', 'isCore', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'uid', 'title', 'category', 'inputType', 'unitLabel',
+          'dailyTarget', 'weeklyTarget', 'monthlyTarget',
+          'xpReward', 'priority', 'reminderEnabled', 'reminderTime',
+          'order', 'isCore', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 64 && data.id == activityId && isValidId(activityId)
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId && data.uid == request.auth.uid
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 40
+        && data.inputType in ['prayer', 'checkbox', 'number', 'time', 'text']
+        && data.unitLabel is string && data.unitLabel.size() <= 40
+        && data.dailyTarget is number && data.dailyTarget >= 0 && data.dailyTarget <= 100000
+        && (!('weeklyTarget' in data) || (data.weeklyTarget is number && data.weeklyTarget >= 0 && data.weeklyTarget <= 1000000))
+        && (!('monthlyTarget' in data) || (data.monthlyTarget is number && data.monthlyTarget >= 0 && data.monthlyTarget <= 10000000))
+        && data.xpReward is number && data.xpReward >= 0 && data.xpReward <= 5000
+        && (!('priority' in data) || data.priority in ['high', 'medium', 'low'])
+        && (!('reminderEnabled' in data) || data.reminderEnabled is bool)
+        && (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 10))
+        && data.order is number && data.order >= 0 && data.order <= 500
+        && data.isCore is bool
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDailyLog(data, userId, dateKey) {
+      return data.keys().hasAll(['uid', 'dateKey', 'entries', 'totalXpEarned', 'completionPct', 'completedCount', 'totalCount', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'dateKey', 'entries', 'totalXpEarned', 'completionPct', 'completedCount', 'totalCount', 'note', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId && data.uid == request.auth.uid
+        && data.dateKey is string && data.dateKey.size() == 10 && data.dateKey == dateKey && isValidDateKey(dateKey)
+        && data.entries is map && data.entries.size() <= 50
+        && data.totalXpEarned is number && data.totalXpEarned >= 0 && data.totalXpEarned <= 100000
+        && data.completionPct is number && data.completionPct >= 0 && data.completionPct <= 100
+        && data.completedCount is number && data.completedCount >= 0 && data.completedCount <= 100
+        && data.totalCount is number && data.totalCount >= 0 && data.totalCount <= 100
+        && (!('note' in data) || (data.note is string && data.note.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'username', 'displayName', 'visibility', 'showXp', 'showLevel', 'showAchievements', 'showStreaks', 'showWeeklyProgress', 'showMonthlyStats', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'username', 'displayName', 'bio', 'avatarId', 'visibility',
+          'showXp', 'showLevel', 'showAchievements', 'showStreaks',
+          'showWeeklyProgress', 'showMonthlyStats', 'sharedCategories',
+          'totalXp', 'level', 'currentStreak', 'longestStreak',
+          'weeklyCompletionPct', 'monthlyCompletionPct', 'completedQuestsCount',
+          'sharedBadges', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid
+        && isValidUsername(data.username)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 240))
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.visibility in ['private', 'friends', 'public']
+        && data.showXp is bool
+        && data.showLevel is bool
+        && data.showAchievements is bool
+        && data.showStreaks is bool
+        && data.showWeeklyProgress is bool
+        && data.showMonthlyStats is bool
+        && (!('sharedCategories' in data) || (data.sharedCategories is list && data.sharedCategories.size() <= 20 && !pHasBlockedCategories(data.sharedCategories)))
+        && (!('totalXp' in data) || (data.totalXp is number && data.totalXp >= 0 && data.totalXp <= 100000000))
+        && (!('level' in data) || (data.level is number && data.level >= 1 && data.level <= 200))
+        && (!('currentStreak' in data) || (data.currentStreak is number && data.currentStreak >= 0 && data.currentStreak <= 5000))
+        && (!('longestStreak' in data) || (data.longestStreak is number && data.longestStreak >= 0 && data.longestStreak <= 5000))
+        && (!('weeklyCompletionPct' in data) || (data.weeklyCompletionPct is number && data.weeklyCompletionPct >= 0 && data.weeklyCompletionPct <= 100))
+        && (!('monthlyCompletionPct' in data) || (data.monthlyCompletionPct is number && data.monthlyCompletionPct >= 0 && data.monthlyCompletionPct <= 100))
+        && (!('completedQuestsCount' in data) || (data.completedQuestsCount is number && data.completedQuestsCount >= 0 && data.completedQuestsCount <= 1000000))
+        && (!('sharedBadges' in data) || (data.sharedBadges is list && data.sharedBadges.size() <= 20))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function pHasBlockedCategories(cats) {
+      return cats.hasAny(['spiritual', 'health']);
+    }
+
+    function isValidUsernameIndex(data, uname) {
+      return data.keys().hasAll(['uid', 'username', 'displayName', 'visibility', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'username', 'displayName', 'avatarId', 'visibility', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == request.auth.uid && isValidId(data.uid)
+        && data.username == uname && isValidUsername(uname)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.visibility in ['private', 'friends', 'public']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFriendRequest(data, requestId) {
+      return data.keys().hasAll(['id', 'fromUid', 'toUid', 'fromUsername', 'fromDisplayName', 'toUsername', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'fromUid', 'toUid', 'fromUsername', 'fromDisplayName', 'toUsername', 'status', 'createdAt', 'updatedAt'])
+        && data.id == requestId
+        && isValidId(data.fromUid) && isValidId(data.toUid)
+        && data.fromUid != data.toUid
+        && requestId == (data.fromUid + '_' + data.toUid)
+        && isValidUsername(data.fromUsername)
+        && data.fromDisplayName is string && data.fromDisplayName.size() >= 1 && data.fromDisplayName.size() <= 100
+        && isValidUsername(data.toUsername)
+        && data.status in ['pending', 'accepted', 'declined']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFriendEdge(data, userId, friendUid) {
+      return data.keys().hasAll(['uid', 'friendUid', 'requestId', 'friendUsername', 'friendDisplayName', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'friendUid', 'requestId', 'friendUsername', 'friendDisplayName', 'friendAvatarId', 'createdAt'])
+        && data.uid == userId && isValidId(userId)
+        && data.friendUid == friendUid && isValidId(friendUid)
+        && userId != friendUid
+        && isValidId(data.requestId)
+        && isValidUsername(data.friendUsername)
+        && data.friendDisplayName is string && data.friendDisplayName.size() >= 1 && data.friendDisplayName.size() <= 100
+        && (!('friendAvatarId' in data) || (data.friendAvatarId is string && data.friendAvatarId.size() <= 40))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidLeaderboardEntry(data, userId) {
+      return data.keys().hasAll(['uid', 'optedIn', 'anonymous', 'displayLabel', 'totalXp', 'level', 'weeklyXp', 'monthlyXp', 'weeklyCompletionPct', 'monthlyCompletionPct', 'currentStreak', 'categoryScores', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'optedIn', 'anonymous', 'displayLabel', 'avatarId',
+          'totalXp', 'level', 'weeklyXp', 'monthlyXp',
+          'weeklyCompletionPct', 'monthlyCompletionPct', 'currentStreak',
+          'categoryScores', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == userId && data.uid == request.auth.uid
+        && data.optedIn is bool
+        && data.anonymous is bool
+        && data.displayLabel is string && data.displayLabel.size() >= 1 && data.displayLabel.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.totalXp is number && data.totalXp >= 0 && data.totalXp <= 100000000
+        && data.level is number && data.level >= 1 && data.level <= 200
+        && data.weeklyXp is number && data.weeklyXp >= 0 && data.weeklyXp <= 1000000
+        && data.monthlyXp is number && data.monthlyXp >= 0 && data.monthlyXp <= 10000000
+        && data.weeklyCompletionPct is number && data.weeklyCompletionPct >= 0 && data.weeklyCompletionPct <= 100
+        && data.monthlyCompletionPct is number && data.monthlyCompletionPct >= 0 && data.monthlyCompletionPct <= 100
+        && data.currentStreak is number && data.currentStreak >= 0 && data.currentStreak <= 5000
+        && data.categoryScores is map && data.categoryScores.size() <= 20
+        && !('spiritual' in data.categoryScores)
+        && !('health' in data.categoryScores)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChallenge(data, challengeId) {
+      return data.keys().hasAll(['id', 'creatorUid', 'title', 'description', 'category', 'targetValue', 'unitLabel', 'durationDays', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'creatorUid', 'title', 'description', 'category', 'targetValue', 'unitLabel', 'durationDays', 'createdAt', 'updatedAt'])
+        && data.id == challengeId && isValidId(challengeId)
+        && data.creatorUid == request.auth.uid && isValidId(data.creatorUid)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.description is string && data.description.size() <= 300
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 40
+        && !(data.category in ['spiritual', 'health'])
+        && data.targetValue is number && data.targetValue >= 1 && data.targetValue <= 1000000
+        && data.unitLabel is string && data.unitLabel.size() >= 1 && data.unitLabel.size() <= 40
+        && data.durationDays is number && data.durationDays >= 1 && data.durationDays <= 365
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChallengeParticipant(data, challengeId, participantUid) {
+      return data.keys().hasAll(['uid', 'challengeId', 'displayLabel', 'progressValue', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'challengeId', 'displayLabel', 'progressValue', 'createdAt', 'updatedAt'])
+        && data.uid == participantUid && data.uid == request.auth.uid
+        && data.challengeId == challengeId && isValidId(challengeId)
+        && data.displayLabel is string && data.displayLabel.size() >= 1 && data.displayLabel.size() <= 100
+        && data.progressValue is number && data.progressValue >= 0 && data.progressValue <= 10000000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFriendGroup(data, groupId) {
+      return data.keys().hasAll(['id', 'name', 'description', 'creatorUid', 'isPrivate', 'inviteCode', 'memberUids', 'memberCount', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'name', 'description', 'avatarId', 'imageUrl', 'creatorUid',
+          'isPrivate', 'inviteCode', 'memberUids', 'memberCount', 'createdAt', 'updatedAt'
+        ])
+        && data.id == groupId && isValidId(groupId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.description is string && data.description.size() <= 300
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 200000 && (data.imageUrl == '' || data.imageUrl.matches('^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'))))
+        && isValidId(data.creatorUid)
+        && data.isPrivate is bool
+        && isValidInviteCode(data.inviteCode)
+        && data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 50
+        && data.creatorUid in data.memberUids
+        && data.memberCount is number && data.memberCount == data.memberUids.size()
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupMember(data, groupId, memberUid) {
+      return data.keys().hasAll(['uid', 'groupId', 'username', 'displayName', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'groupId', 'username', 'displayName', 'avatarId', 'role', 'joinedAt', 'createdAt', 'updatedAt'])
+        && data.uid == memberUid && isValidId(memberUid)
+        && data.groupId == groupId && isValidId(groupId)
+        && isValidUsername(data.username)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.role in ['creator', 'admin', 'member']
+        && (!('joinedAt' in data) || data.joinedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupInvitation(data, inviteId) {
+      return data.keys().hasAll(['id', 'groupId', 'groupName', 'fromUid', 'fromUsername', 'fromDisplayName', 'toUid', 'toUsername', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'groupId', 'groupName', 'groupDescription', 'fromUid', 'fromUsername', 'fromDisplayName', 'toUid', 'toUsername', 'status', 'createdAt', 'updatedAt'])
+        && data.id == inviteId && isValidGroupInviteId(inviteId)
+        && isValidId(data.groupId)
+        && inviteId == (data.groupId + '_' + data.toUid)
+        && data.groupName is string && data.groupName.size() >= 1 && data.groupName.size() <= 80
+        && (!('groupDescription' in data) || (data.groupDescription is string && data.groupDescription.size() <= 300))
+        && isValidId(data.fromUid) && isValidId(data.toUid)
+        && data.fromUid != data.toUid
+        && isValidUsername(data.fromUsername)
+        && data.fromDisplayName is string && data.fromDisplayName.size() >= 1 && data.fromDisplayName.size() <= 100
+        && isValidUsername(data.toUsername)
+        && data.status in ['pending', 'accepted', 'declined']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupInviteLink(data, inviteCode) {
+      return data.keys().hasAll(['code', 'groupId', 'groupName', 'creatorUid', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'groupId', 'groupName', 'creatorUid', 'active', 'createdAt', 'updatedAt'])
+        && data.code == inviteCode && isValidInviteCode(inviteCode)
+        && isValidId(data.groupId)
+        && data.groupName is string && data.groupName.size() >= 1 && data.groupName.size() <= 80
+        && isValidId(data.creatorUid)
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupSharedProgress(data, groupId, memberUid) {
+      return data.keys().hasAll(['uid', 'groupId', 'username', 'displayName', 'sharingEnabled', 'showXp', 'showLevel', 'showStreaks', 'showAchievements', 'showWeeklySummary', 'showMonthlySummary', 'sharedCategories', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'groupId', 'username', 'displayName', 'avatarId',
+          'sharingEnabled', 'showXp', 'showLevel', 'showStreaks', 'showAchievements',
+          'showWeeklySummary', 'showMonthlySummary', 'sharedCategories',
+          'dailyCompletionPct', 'weeklyCompletionPct', 'monthlyCompletionPct',
+          'totalXp', 'level', 'currentStreak', 'longestStreak',
+          'sharedBadges', 'categorySummaries', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == memberUid && data.uid == request.auth.uid
+        && data.groupId == groupId && isValidId(groupId)
+        && isValidUsername(data.username)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.sharingEnabled is bool
+        && data.showXp is bool
+        && data.showLevel is bool
+        && data.showStreaks is bool
+        && data.showAchievements is bool
+        && data.showWeeklySummary is bool
+        && data.showMonthlySummary is bool
+        && data.sharedCategories is list && data.sharedCategories.size() <= 20
+        && !data.sharedCategories.hasAny(['spiritual', 'health'])
+        && (data.sharingEnabled == true || (
+          data.showXp == false
+          && data.showLevel == false
+          && data.showStreaks == false
+          && data.showAchievements == false
+          && data.showWeeklySummary == false
+          && data.showMonthlySummary == false
+          && data.sharedCategories.size() == 0
+        ))
+        && (!('dailyCompletionPct' in data) || (data.dailyCompletionPct is number && data.dailyCompletionPct >= 0 && data.dailyCompletionPct <= 100))
+        && (!('weeklyCompletionPct' in data) || (data.weeklyCompletionPct is number && data.weeklyCompletionPct >= 0 && data.weeklyCompletionPct <= 100))
+        && (!('monthlyCompletionPct' in data) || (data.monthlyCompletionPct is number && data.monthlyCompletionPct >= 0 && data.monthlyCompletionPct <= 100))
+        && (!('totalXp' in data) || (data.totalXp is number && data.totalXp >= 0 && data.totalXp <= 100000000))
+        && (!('level' in data) || (data.level is number && data.level >= 1 && data.level <= 200))
+        && (!('currentStreak' in data) || (data.currentStreak is number && data.currentStreak >= 0 && data.currentStreak <= 5000))
+        && (!('longestStreak' in data) || (data.longestStreak is number && data.longestStreak >= 0 && data.longestStreak <= 5000))
+        && (!('sharedBadges' in data) || (data.sharedBadges is list && data.sharedBadges.size() <= 20))
+        && (!('categorySummaries' in data) || (
+          data.categorySummaries is map
+          && data.categorySummaries.size() <= 20
+          && !('spiritual' in data.categorySummaries)
+          && !('health' in data.categorySummaries)
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupFeedItem(data, groupId, feedId) {
+      return data.keys().hasAll(['id', 'groupId', 'uid', 'displayName', 'type', 'title', 'detail', 'createdAt'])
+        && data.keys().hasOnly(['id', 'groupId', 'uid', 'displayName', 'avatarId', 'type', 'title', 'detail', 'createdAt'])
+        && data.id == feedId && isValidId(feedId)
+        && data.groupId == groupId && isValidId(groupId)
+        && data.uid == request.auth.uid && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.type in ['achievement', 'milestone', 'challenge']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.detail is string && data.detail.size() <= 300
+        && data.createdAt is timestamp;
+    }
+
+    function isValidGroupChallenge(data, groupId, challengeId) {
+      return data.keys().hasAll(['id', 'groupId', 'creatorUid', 'title', 'description', 'frequency', 'category', 'targetValue', 'unitLabel', 'durationDays', 'xpReward', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'groupId', 'creatorUid', 'title', 'description', 'frequency',
+          'category', 'activityId', 'targetValue', 'unitLabel', 'durationDays',
+          'xpReward', 'badgeTitle', 'createdAt', 'updatedAt'
+        ])
+        && data.id == challengeId && isValidId(challengeId)
+        && data.groupId == groupId && isValidId(groupId)
+        && isValidId(data.creatorUid)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.description is string && data.description.size() <= 300
+        && data.frequency in ['daily', 'weekly', 'monthly', 'custom']
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 40
+        && !(data.category in ['spiritual', 'health'])
+        && (!('activityId' in data) || (data.activityId is string && data.activityId.size() <= 64))
+        && data.targetValue is number && data.targetValue >= 1 && data.targetValue <= 1000000
+        && data.unitLabel is string && data.unitLabel.size() >= 1 && data.unitLabel.size() <= 40
+        && data.durationDays is number && data.durationDays >= 1 && data.durationDays <= 365
+        && data.xpReward is number && data.xpReward >= 0 && data.xpReward <= 5000
+        && (!('badgeTitle' in data) || (data.badgeTitle is string && data.badgeTitle.size() <= 60))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGroupChallengeParticipant(data, groupId, challengeId, participantUid) {
+      return data.keys().hasAll(['uid', 'groupId', 'challengeId', 'displayName', 'progressValue', 'completed', 'xpAwarded', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'groupId', 'challengeId', 'displayName', 'avatarId',
+          'progressValue', 'completed', 'xpAwarded', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == participantUid && data.uid == request.auth.uid
+        && data.groupId == groupId && isValidId(groupId)
+        && data.challengeId == challengeId && isValidId(challengeId)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40))
+        && data.progressValue is number && data.progressValue >= 0 && data.progressValue <= 10000000
+        && data.completed is bool
+        && data.xpAwarded is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 1. Private User Profile & Subcollections (Strictly Owner-Only)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'username', 'bio', 'avatarId', 'email', 'language',
+          'baseXpPerLevel', 'xpGrowthStep', 'dailyBonusXp',
+          'onboardingCompleted', 'religionTrackingEnabled', 'remindersEnabled',
+          'enabledCategories', 'customCategories', 'personalGoals', 'privacy',
+          'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isVerifiedOwner(userId);
+
+      match /activities/{activityId} {
+        allow get: if isValidId(userId) && isValidId(activityId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(activityId)
+          && isVerifiedOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidActivity(incoming(), userId, activityId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(activityId)
+          && isVerifiedOwner(userId)
+          && isValidActivity(incoming(), userId, activityId)
+          && incoming().id == existing().id
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'category', 'inputType', 'unitLabel',
+            'dailyTarget', 'weeklyTarget', 'monthlyTarget',
+            'xpReward', 'priority', 'reminderEnabled', 'reminderTime',
+            'order', 'isActive', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(activityId) && isVerifiedOwner(userId);
+      }
+
+      match /dailyLogs/{dateKey} {
+        allow get: if isValidId(userId) && isValidDateKey(dateKey) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidDateKey(dateKey)
+          && isVerifiedOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidDailyLog(incoming(), userId, dateKey)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidDateKey(dateKey)
+          && isVerifiedOwner(userId)
+          && isValidDailyLog(incoming(), userId, dateKey)
+          && incoming().uid == existing().uid
+          && incoming().dateKey == existing().dateKey
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['entries', 'totalXpEarned', 'completionPct', 'completedCount', 'totalCount', 'note', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidDateKey(dateKey) && isVerifiedOwner(userId);
+      }
+
+      match /friends/{friendUid} {
+        allow get: if isValidId(userId) && isValidId(friendUid) && (isOwner(userId) || isOwner(friendUid));
+        allow list: if isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(friendUid)
+          && isVerifiedUser()
+          && (isOwner(userId) || isOwner(friendUid))
+          && isValidFriendEdge(incoming(), userId, friendUid)
+          && incoming().createdAt == request.time
+          && getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.status == 'accepted'
+          && getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == request.auth.uid
+          && (
+            (getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.fromUid == userId
+              && getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == friendUid)
+            || (getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == userId
+              && getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.fromUid == friendUid)
+          );
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(friendUid) && isVerifiedUser() && (isOwner(userId) || isOwner(friendUid));
+      }
+    }
+
+    // 2. Sanitized Public / Friends Profiles (Zero PII, Zero Daily Logs, Zero Spiritual/Health Data)
+    match /publicProfiles/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (
+        isOwner(userId)
+        || existing().visibility == 'public'
+        || (existing().visibility == 'friends' && isFriendOf(userId))
+      );
+      allow list: if isSignedIn() && (existing().uid == request.auth.uid || existing().visibility == 'public');
+      allow create: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'username', 'displayName', 'bio', 'avatarId', 'visibility',
+          'showXp', 'showLevel', 'showAchievements', 'showStreaks',
+          'showWeeklyProgress', 'showMonthlyStats', 'sharedCategories',
+          'totalXp', 'level', 'currentStreak', 'longestStreak',
+          'weeklyCompletionPct', 'monthlyCompletionPct', 'completedQuestsCount',
+          'sharedBadges', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isVerifiedOwner(userId);
+    }
+
+    // 3. Username Lookup Registry (Private accounts completely hidden from search)
+    match /usernames/{username} {
+      allow get: if isValidUsername(username) && isSignedIn() && (existing().uid == request.auth.uid || existing().visibility != 'private');
+      allow list: if isSignedIn() && (existing().uid == request.auth.uid || existing().visibility != 'private');
+      allow create: if isValidUsername(username)
+        && isVerifiedUser()
+        && isValidUsernameIndex(incoming(), username)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidUsername(username)
+        && isVerifiedUser()
+        && existing().uid == request.auth.uid
+        && isValidUsernameIndex(incoming(), username)
+        && incoming().uid == existing().uid
+        && incoming().username == existing().username
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarId', 'visibility', 'updatedAt']);
+      allow delete: if isValidUsername(username) && isVerifiedUser() && existing().uid == request.auth.uid;
+    }
+
+    // 4. Friend Requests (Terminal state lock after accept/decline)
+    match /friendRequests/{requestId} {
+      allow get: if isValidId(requestId) && isSignedIn() && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+      allow list: if isSignedIn() && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+      allow create: if isValidId(requestId)
+        && isVerifiedUser()
+        && isValidFriendRequest(incoming(), requestId)
+        && incoming().fromUid == request.auth.uid
+        && incoming().status == 'pending'
+        && exists(/databases/$(database)/documents/usernames/$(incoming().toUsername))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(requestId)
+        && isVerifiedUser()
+        && existing().status == 'pending'
+        && existing().toUid == request.auth.uid
+        && isValidFriendRequest(incoming(), requestId)
+        && incoming().id == existing().id
+        && incoming().fromUid == existing().fromUid
+        && incoming().toUid == existing().toUid
+        && incoming().fromUsername == existing().fromUsername
+        && incoming().toUsername == existing().toUsername
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().status in ['accepted', 'declined']
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isValidId(requestId) && isVerifiedUser() && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+    }
+
+    // 5. Optional Leaderboards (Opt-In OFF by default; spiritual & health forbidden)
+    match /leaderboards/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (isOwner(userId) || existing().optedIn == true);
+      allow list: if isSignedIn() && (existing().uid == request.auth.uid || existing().optedIn == true);
+      allow create: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidLeaderboardEntry(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && isValidLeaderboardEntry(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'optedIn', 'anonymous', 'displayLabel', 'avatarId',
+          'totalXp', 'level', 'weeklyXp', 'monthlyXp',
+          'weeklyCompletionPct', 'monthlyCompletionPct', 'currentStreak',
+          'categoryScores', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isVerifiedOwner(userId);
+    }
+
+    // 6. Optional Community Challenges (Non-religious, non-PII)
+    match /challenges/{challengeId} {
+      allow get: if isValidId(challengeId) && isSignedIn();
+      allow list: if isSignedIn() && existing().durationDays >= 1;
+      allow create: if isValidId(challengeId)
+        && isVerifiedUser()
+        && isValidChallenge(incoming(), challengeId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(challengeId)
+        && isVerifiedUser()
+        && existing().creatorUid == request.auth.uid
+        && isValidChallenge(incoming(), challengeId)
+        && incoming().id == existing().id
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'targetValue', 'unitLabel', 'durationDays', 'updatedAt']);
+      allow delete: if isValidId(challengeId) && isVerifiedUser() && existing().creatorUid == request.auth.uid;
+
+      match /participants/{participantUid} {
+        allow get: if isValidId(challengeId) && isValidId(participantUid) && isSignedIn();
+        allow list: if isValidId(challengeId) && isSignedIn() && existing().challengeId == challengeId;
+        allow create: if isValidId(challengeId)
+          && isValidId(participantUid)
+          && isVerifiedOwner(participantUid)
+          && exists(/databases/$(database)/documents/challenges/$(challengeId))
+          && isValidChallengeParticipant(incoming(), challengeId, participantUid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(challengeId)
+          && isValidId(participantUid)
+          && isVerifiedOwner(participantUid)
+          && isValidChallengeParticipant(incoming(), challengeId, participantUid)
+          && incoming().uid == existing().uid
+          && incoming().challengeId == existing().challengeId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['displayLabel', 'progressValue', 'updatedAt']);
+        allow delete: if isValidId(challengeId) && isValidId(participantUid) && isVerifiedOwner(participantUid);
+      }
+    }
+
+    // 7. Optional Private Friends Groups & Subcollections
+    match /groups/{groupId} {
+      allow get: if isValidId(groupId) && isSignedIn() && (request.auth.uid in existing().memberUids || existing().isPrivate == false);
+      allow list: if isSignedIn() && (request.auth.uid in existing().memberUids);
+      allow create: if isValidId(groupId)
+        && isVerifiedUser()
+        && isValidFriendGroup(incoming(), groupId)
+        && incoming().creatorUid == request.auth.uid
+        && incoming().memberUids.size() == 1
+        && request.auth.uid in incoming().memberUids
+        && incoming().memberCount == 1
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(groupId)
+        && isVerifiedUser()
+        && isValidFriendGroup(incoming(), groupId)
+        && incoming().id == existing().id
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Admin or creator managing group details, inviteCode, or members (cannot remove creatorUid)
+          (isGroupAdminOrCreator(groupId)
+            && incoming().creatorUid in incoming().memberUids
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'description', 'avatarId', 'imageUrl', 'isPrivate',
+              'inviteCode', 'memberUids', 'memberCount', 'updatedAt'
+            ]))
+          // Verified user joining via accepted invitation or active invite link (adds self only)
+          || (!(request.auth.uid in existing().memberUids)
+            && (request.auth.uid in incoming().memberUids)
+            && incoming().memberUids.hasAll(existing().memberUids)
+            && incoming().memberUids.size() == existing().memberUids.size() + 1
+            && incoming().memberCount == existing().memberCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'memberCount', 'updatedAt'])
+            && (hasAcceptedGroupInviteAfter(groupId, request.auth.uid) || hasActiveGroupInviteLinkForGroup(groupId)))
+          // Non-creator member leaving group cleanly (removes self only)
+          || ((request.auth.uid in existing().memberUids)
+            && request.auth.uid != existing().creatorUid
+            && !(request.auth.uid in incoming().memberUids)
+            && existing().memberUids.hasAll(incoming().memberUids)
+            && incoming().memberUids.size() == existing().memberUids.size() - 1
+            && incoming().memberCount == existing().memberCount - 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'memberCount', 'updatedAt']))
+        );
+      allow delete: if isValidId(groupId) && isVerifiedUser() && isGroupAdminOrCreator(groupId);
+
+      match /members/{memberUid} {
+        allow get: if isValidId(groupId) && isValidId(memberUid) && isGroupMember(groupId);
+        allow list: if isValidId(groupId) && isGroupMember(groupId);
+        allow create: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedOwner(memberUid)
+          && isValidGroupMember(incoming(), groupId, memberUid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && (
+            (incoming().role == 'creator'
+              && getAfter(/databases/$(database)/documents/groups/$(groupId)).data.creatorUid == request.auth.uid)
+            || (incoming().role == 'member'
+              && (hasAcceptedGroupInviteAfter(groupId, memberUid) || hasActiveGroupInviteLinkForGroup(groupId)))
+          );
+        allow update: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedUser()
+          && isValidGroupMember(incoming(), groupId, memberUid)
+          && incoming().uid == existing().uid
+          && incoming().groupId == existing().groupId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (isGroupCreator(groupId)
+              && existing().role != 'creator'
+              && incoming().role in ['admin', 'member']
+              && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt']))
+            || (isOwner(memberUid)
+              && incoming().role == existing().role
+              && incoming().diff(existing()).affectedKeys().hasOnly(['username', 'displayName', 'avatarId', 'updatedAt']))
+          );
+        allow delete: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedUser()
+          && (
+            (isOwner(memberUid) && existing().role != 'creator')
+            || (isGroupCreator(groupId) && existing().role != 'creator')
+            || (isGroupAdmin(groupId) && existing().role == 'member')
+          );
+      }
+
+      match /sharedProgress/{memberUid} {
+        allow get: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isGroupMember(groupId)
+          && (isOwner(memberUid) || existing().sharingEnabled == true);
+        allow list: if isValidId(groupId)
+          && isGroupMember(groupId)
+          && (existing().uid == request.auth.uid || existing().sharingEnabled == true);
+        allow create: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedOwner(memberUid)
+          && isGroupMember(groupId)
+          && isValidGroupSharedProgress(incoming(), groupId, memberUid)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedOwner(memberUid)
+          && isGroupMember(groupId)
+          && isValidGroupSharedProgress(incoming(), groupId, memberUid)
+          && incoming().uid == existing().uid
+          && incoming().groupId == existing().groupId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'username', 'displayName', 'avatarId',
+            'sharingEnabled', 'showXp', 'showLevel', 'showStreaks', 'showAchievements',
+            'showWeeklySummary', 'showMonthlySummary', 'sharedCategories',
+            'dailyCompletionPct', 'weeklyCompletionPct', 'monthlyCompletionPct',
+            'totalXp', 'level', 'currentStreak', 'longestStreak',
+            'sharedBadges', 'categorySummaries', 'updatedAt'
+          ]);
+        allow delete: if isValidId(groupId)
+          && isValidId(memberUid)
+          && isVerifiedUser()
+          && (isOwner(memberUid) || isGroupAdminOrCreator(groupId));
+      }
+
+      match /feed/{feedId} {
+        allow get: if isValidId(groupId) && isValidId(feedId) && isGroupMember(groupId);
+        allow list: if isValidId(groupId) && isGroupMember(groupId);
+        allow create: if isValidId(groupId)
+          && isValidId(feedId)
+          && isVerifiedUser()
+          && isGroupMember(groupId)
+          && isValidGroupFeedItem(incoming(), groupId, feedId)
+          && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isValidId(groupId)
+          && isValidId(feedId)
+          && isVerifiedUser()
+          && (existing().uid == request.auth.uid || isGroupAdminOrCreator(groupId));
+      }
+
+      match /challenges/{challengeId} {
+        allow get: if isValidId(groupId) && isValidId(challengeId) && isGroupMember(groupId);
+        allow list: if isValidId(groupId) && isGroupMember(groupId);
+        allow create: if isValidId(groupId)
+          && isValidId(challengeId)
+          && isVerifiedUser()
+          && isGroupMember(groupId)
+          && incoming().creatorUid == request.auth.uid
+          && isValidGroupChallenge(incoming(), groupId, challengeId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(groupId)
+          && isValidId(challengeId)
+          && isVerifiedUser()
+          && (existing().creatorUid == request.auth.uid || isGroupAdminOrCreator(groupId))
+          && isValidGroupChallenge(incoming(), groupId, challengeId)
+          && incoming().id == existing().id
+          && incoming().groupId == existing().groupId
+          && incoming().creatorUid == existing().creatorUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'description', 'frequency', 'category', 'activityId',
+            'targetValue', 'unitLabel', 'durationDays', 'xpReward', 'badgeTitle', 'updatedAt'
+          ]);
+        allow delete: if isValidId(groupId)
+          && isValidId(challengeId)
+          && isVerifiedUser()
+          && (existing().creatorUid == request.auth.uid || isGroupAdminOrCreator(groupId));
+
+        match /participants/{participantUid} {
+          allow get: if isValidId(groupId) && isValidId(challengeId) && isValidId(participantUid) && isGroupMember(groupId);
+          allow list: if isValidId(groupId) && isValidId(challengeId) && isGroupMember(groupId);
+          allow create: if isValidId(groupId)
+            && isValidId(challengeId)
+            && isValidId(participantUid)
+            && isVerifiedOwner(participantUid)
+            && isGroupMember(groupId)
+            && exists(/databases/$(database)/documents/groups/$(groupId)/challenges/$(challengeId))
+            && isValidGroupChallengeParticipant(incoming(), groupId, challengeId, participantUid)
+            && incoming().createdAt == request.time
+            && incoming().updatedAt == request.time;
+          allow update: if isValidId(groupId)
+            && isValidId(challengeId)
+            && isValidId(participantUid)
+            && isVerifiedOwner(participantUid)
+            && isGroupMember(groupId)
+            && isValidGroupChallengeParticipant(incoming(), groupId, challengeId, participantUid)
+            && incoming().uid == existing().uid
+            && incoming().groupId == existing().groupId
+            && incoming().challengeId == existing().challengeId
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'avatarId', 'progressValue', 'completed', 'xpAwarded', 'updatedAt'
+            ]);
+          allow delete: if isValidId(groupId)
+            && isValidId(challengeId)
+            && isValidId(participantUid)
+            && isVerifiedUser()
+            && (isOwner(participantUid) || isGroupAdminOrCreator(groupId));
+        }
+      }
+    }
+
+    // 8. Group Invitations (Username-Targeted, Terminal Accept/Decline Lock)
+    match /groupInvitations/{inviteId} {
+      allow get: if isValidGroupInviteId(inviteId)
+        && isSignedIn()
+        && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+      allow create: if isValidGroupInviteId(inviteId)
+        && isVerifiedUser()
+        && isValidGroupInvitation(incoming(), inviteId)
+        && incoming().fromUid == request.auth.uid
+        && incoming().status == 'pending'
+        && isGroupAdminOrCreator(incoming().groupId)
+        && exists(/databases/$(database)/documents/usernames/$(incoming().toUsername))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidGroupInviteId(inviteId)
+        && isVerifiedUser()
+        && existing().status == 'pending'
+        && existing().toUid == request.auth.uid
+        && isValidGroupInvitation(incoming(), inviteId)
+        && incoming().id == existing().id
+        && incoming().groupId == existing().groupId
+        && incoming().groupName == existing().groupName
+        && incoming().fromUid == existing().fromUid
+        && incoming().fromUsername == existing().fromUsername
+        && incoming().fromDisplayName == existing().fromDisplayName
+        && incoming().toUid == existing().toUid
+        && incoming().toUsername == existing().toUsername
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().status in ['accepted', 'declined']
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isValidGroupInviteId(inviteId)
+        && isVerifiedUser()
+        && (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid || isGroupAdminOrCreator(existing().groupId));
+    }
+
+    // 9. Shareable Group Invite Links (Zero Enumeration via allow list: false)
+    match /groupInviteLinks/{inviteCode} {
+      allow get: if isValidInviteCode(inviteCode)
+        && isSignedIn()
+        && (existing().active == true || isGroupAdminOrCreator(existing().groupId));
+      allow list: if false;
+      allow create: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && isValidGroupInviteLink(incoming(), inviteCode)
+        && incoming().creatorUid == request.auth.uid
+        && (
+          isGroupAdminOrCreator(incoming().groupId)
+          || getAfter(/databases/$(database)/documents/groups/$(incoming().groupId)).data.creatorUid == request.auth.uid
+        )
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && isGroupAdminOrCreator(existing().groupId)
+        && isValidGroupInviteLink(incoming(), inviteCode)
+        && incoming().code == existing().code
+        && incoming().groupId == existing().groupId
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['groupName', 'active', 'updatedAt']);
+      allow delete: if isValidInviteCode(inviteCode)
+        && isVerifiedUser()
+        && isGroupAdminOrCreator(existing().groupId);
+    }
+  }
+}

@@ -1,0 +1,445 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account profile, onboarding state, RPG level/XP config, custom categories, and privacy configuration.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-z0-9_]{3,24}$" },
+        "bio": { "type": "string", "maxLength": 240 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "language": { "type": "string", "enum": ["en", "bn"] },
+        "baseXpPerLevel": { "type": "number" },
+        "xpGrowthStep": { "type": "number" },
+        "dailyBonusXp": { "type": "number" },
+        "onboardingCompleted": { "type": "boolean" },
+        "religionTrackingEnabled": { "type": "boolean" },
+        "remindersEnabled": { "type": "boolean" },
+        "enabledCategories": { "type": "array" },
+        "customCategories": { "type": "array" },
+        "personalGoals": { "type": "array" },
+        "privacy": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "baseXpPerLevel", "xpGrowthStep", "dailyBonusXp", "createdAt", "updatedAt"]
+    },
+    "ActivityDefinition": {
+      "title": "ActivityDefinition",
+      "description": "Flexible user-defined daily, weekly, and monthly activity or quest.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "inputType": { "type": "string", "enum": ["prayer", "checkbox", "number", "time", "text"] },
+        "unitLabel": { "type": "string", "maxLength": 40 },
+        "dailyTarget": { "type": "number" },
+        "weeklyTarget": { "type": "number" },
+        "monthlyTarget": { "type": "number" },
+        "xpReward": { "type": "number" },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "reminderEnabled": { "type": "boolean" },
+        "reminderTime": { "type": "string", "maxLength": 10 },
+        "order": { "type": "number" },
+        "isCore": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "title", "category", "inputType", "unitLabel", "dailyTarget", "xpReward", "order", "isCore", "isActive", "createdAt", "updatedAt"]
+    },
+    "DailyLog": {
+      "title": "DailyLog",
+      "description": "Private date-keyed daily activity log in Asia/Dhaka timezone.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dateKey": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "entries": { "type": "object" },
+        "totalXpEarned": { "type": "number" },
+        "completionPct": { "type": "number" },
+        "completedCount": { "type": "number" },
+        "totalCount": { "type": "number" },
+        "note": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "dateKey", "entries", "totalXpEarned", "completionPct", "completedCount", "totalCount", "createdAt", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Sanitized social projection with zero PII, zero daily logs, and zero spiritual/health data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-z0-9_]{3,24}$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "bio": { "type": "string", "maxLength": 240 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "visibility": { "type": "string", "enum": ["private", "friends", "public"] },
+        "showXp": { "type": "boolean" },
+        "showLevel": { "type": "boolean" },
+        "showAchievements": { "type": "boolean" },
+        "showStreaks": { "type": "boolean" },
+        "showWeeklyProgress": { "type": "boolean" },
+        "showMonthlyStats": { "type": "boolean" },
+        "sharedCategories": { "type": "array" },
+        "totalXp": { "type": "number" },
+        "level": { "type": "number" },
+        "currentStreak": { "type": "number" },
+        "longestStreak": { "type": "number" },
+        "weeklyCompletionPct": { "type": "number" },
+        "monthlyCompletionPct": { "type": "number" },
+        "completedQuestsCount": { "type": "number" },
+        "sharedBadges": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "username", "displayName", "visibility", "showXp", "showLevel", "showAchievements", "showStreaks", "showWeeklyProgress", "showMonthlyStats", "createdAt", "updatedAt"]
+    },
+    "UsernameIndex": {
+      "title": "UsernameIndex",
+      "description": "Searchable username handle index that hides private accounts.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-z0-9_]{3,24}$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "visibility": { "type": "string", "enum": ["private", "friends", "public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "username", "displayName", "visibility", "createdAt", "updatedAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Directed friend request with terminal status lock.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 3, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fromUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "toUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fromUsername": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "fromDisplayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "toUsername": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "fromUid", "toUid", "fromUsername", "fromDisplayName", "toUsername", "status", "createdAt", "updatedAt"]
+    },
+    "FriendEdge": {
+      "title": "FriendEdge",
+      "description": "Accepted mutual friend edge enabling friends-only profile access.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "friendUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "requestId": { "type": "string", "minLength": 3, "maxLength": 128 },
+        "friendUsername": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "friendDisplayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "friendAvatarId": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "friendUid", "requestId", "friendUsername", "friendDisplayName", "createdAt"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Optional leaderboard entry requiring explicit optIn and banning spiritual/health data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "optedIn": { "type": "boolean" },
+        "anonymous": { "type": "boolean" },
+        "displayLabel": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "totalXp": { "type": "number" },
+        "level": { "type": "number" },
+        "weeklyXp": { "type": "number" },
+        "monthlyXp": { "type": "number" },
+        "weeklyCompletionPct": { "type": "number" },
+        "monthlyCompletionPct": { "type": "number" },
+        "currentStreak": { "type": "number" },
+        "categoryScores": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "optedIn", "anonymous", "displayLabel", "totalXp", "level", "weeklyXp", "monthlyXp", "weeklyCompletionPct", "monthlyCompletionPct", "currentStreak", "categoryScores", "createdAt", "updatedAt"]
+    },
+    "CommunityChallenge": {
+      "title": "CommunityChallenge",
+      "description": "Optional non-religious community productivity challenge.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "targetValue": { "type": "number" },
+        "unitLabel": { "type": "string", "maxLength": 40 },
+        "durationDays": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "creatorUid", "title", "description", "category", "targetValue", "unitLabel", "durationDays", "createdAt", "updatedAt"]
+    },
+    "ChallengeParticipant": {
+      "title": "ChallengeParticipant",
+      "description": "Participant opt-in progress for a community challenge.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "challengeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "displayLabel": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "progressValue": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "challengeId", "displayLabel", "progressValue", "createdAt", "updatedAt"]
+    },
+    "FriendGroup": {
+      "title": "FriendGroup",
+      "description": "Private-by-default friend accountability group with bounded member list.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 300 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "imageUrl": { "type": "string", "maxLength": 200000 },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "isPrivate": { "type": "boolean" },
+        "inviteCode": { "type": "string", "minLength": 6, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberUids": { "type": "array" },
+        "memberCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "description", "creatorUid", "isPrivate", "inviteCode", "memberUids", "memberCount", "createdAt", "updatedAt"]
+    },
+    "GroupMember": {
+      "title": "GroupMember",
+      "description": "Authoritative group membership and role document.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-z0-9_]{3,24}$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "role": { "type": "string", "enum": ["creator", "admin", "member"] },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "groupId", "username", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "GroupInvitation": {
+      "title": "GroupInvitation",
+      "description": "Directed group invitation by username with terminal accept/decline lock.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 3, "maxLength": 192, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "groupName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "groupDescription": { "type": "string", "maxLength": 300 },
+        "fromUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fromUsername": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "fromDisplayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "toUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "toUsername": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "groupId", "groupName", "fromUid", "fromUsername", "fromDisplayName", "toUid", "toUsername", "status", "createdAt", "updatedAt"]
+    },
+    "GroupInviteLink": {
+      "title": "GroupInviteLink",
+      "description": "Shareable invitation code linked to a private group (non-listable).",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 6, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "groupName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "groupId", "groupName", "creatorUid", "active", "createdAt", "updatedAt"]
+    },
+    "GroupSharedProgress": {
+      "title": "GroupSharedProgress",
+      "description": "Opt-in per-group sanitized activity summary owned strictly by the member (OFF by default).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "sharingEnabled": { "type": "boolean" },
+        "showXp": { "type": "boolean" },
+        "showLevel": { "type": "boolean" },
+        "showStreaks": { "type": "boolean" },
+        "showAchievements": { "type": "boolean" },
+        "showWeeklySummary": { "type": "boolean" },
+        "showMonthlySummary": { "type": "boolean" },
+        "sharedCategories": { "type": "array" },
+        "dailyCompletionPct": { "type": "number" },
+        "weeklyCompletionPct": { "type": "number" },
+        "monthlyCompletionPct": { "type": "number" },
+        "totalXp": { "type": "number" },
+        "level": { "type": "number" },
+        "currentStreak": { "type": "number" },
+        "longestStreak": { "type": "number" },
+        "sharedBadges": { "type": "array" },
+        "categorySummaries": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "groupId", "username", "displayName", "sharingEnabled", "showXp", "showLevel", "showStreaks", "showAchievements", "showWeeklySummary", "showMonthlySummary", "sharedCategories", "createdAt", "updatedAt"]
+    },
+    "GroupFeedItem": {
+      "title": "GroupFeedItem",
+      "description": "Voluntarily shared milestone or achievement feed item inside a group.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "type": { "type": "string", "enum": ["achievement", "milestone", "challenge"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "detail": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "groupId", "uid", "displayName", "type", "title", "detail", "createdAt"]
+    },
+    "GroupChallenge": {
+      "title": "GroupChallenge",
+      "description": "Daily, weekly, monthly, or custom group challenge excluding private categories.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "frequency": { "type": "string", "enum": ["daily", "weekly", "monthly", "custom"] },
+        "category": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "activityId": { "type": "string", "maxLength": 64 },
+        "targetValue": { "type": "number" },
+        "unitLabel": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "durationDays": { "type": "number" },
+        "xpReward": { "type": "number" },
+        "badgeTitle": { "type": "string", "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "groupId", "creatorUid", "title", "description", "frequency", "category", "targetValue", "unitLabel", "durationDays", "xpReward", "createdAt", "updatedAt"]
+    },
+    "GroupChallengeParticipant": {
+      "title": "GroupChallengeParticipant",
+      "description": "Group challenge participant progress and completion state.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "challengeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "avatarId": { "type": "string", "maxLength": 40 },
+        "progressValue": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "xpAwarded": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "groupId", "challengeId", "displayName", "progressValue", "completed", "xpAwarded", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user account, PII, onboarding preferences, and privacy settings."
+    },
+    "/users/{userId}/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/ActivityDefinition" },
+      "description": "Owner-only activity definitions with flexible categories and daily/weekly/monthly targets."
+    },
+    "/users/{userId}/dailyLogs/{dateKey}": {
+      "schema": { "$ref": "#/entities/DailyLog" },
+      "description": "Owner-only date-keyed daily records."
+    },
+    "/users/{userId}/friends/{friendUid}": {
+      "schema": { "$ref": "#/entities/FriendEdge" },
+      "description": "Accepted mutual friend edges linking friends."
+    },
+    "/publicProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Sanitized public/friends profile summary without PII or private logs."
+    },
+    "/usernames/{username}": {
+      "schema": { "$ref": "#/entities/UsernameIndex" },
+      "description": "Searchable handle registry excluding private accounts."
+    },
+    "/friendRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Directed friend request workflow."
+    },
+    "/leaderboards/{userId}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Opt-in sanitized leaderboard standings."
+    },
+    "/challenges/{challengeId}": {
+      "schema": { "$ref": "#/entities/CommunityChallenge" },
+      "description": "Optional community productivity challenges."
+    },
+    "/challenges/{challengeId}/participants/{participantUid}": {
+      "schema": { "$ref": "#/entities/ChallengeParticipant" },
+      "description": "Challenge participant progress."
+    },
+    "/groups/{groupId}": {
+      "schema": { "$ref": "#/entities/FriendGroup" },
+      "description": "Private-by-default friend accountability groups."
+    },
+    "/groups/{groupId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/GroupMember" },
+      "description": "Group members and role assignments."
+    },
+    "/groups/{groupId}/sharedProgress/{memberUid}": {
+      "schema": { "$ref": "#/entities/GroupSharedProgress" },
+      "description": "Per-member opt-in shared activity and XP summaries for the group."
+    },
+    "/groups/{groupId}/feed/{feedId}": {
+      "schema": { "$ref": "#/entities/GroupFeedItem" },
+      "description": "Voluntarily shared achievement and milestone feed items within a group."
+    },
+    "/groups/{groupId}/challenges/{challengeId}": {
+      "schema": { "$ref": "#/entities/GroupChallenge" },
+      "description": "Daily, weekly, monthly, or custom challenges created inside a group."
+    },
+    "/groups/{groupId}/challenges/{challengeId}/participants/{participantUid}": {
+      "schema": { "$ref": "#/entities/GroupChallengeParticipant" },
+      "description": "Individual member progress in a group challenge."
+    },
+    "/groupInvitations/{inviteId}": {
+      "schema": { "$ref": "#/entities/GroupInvitation" },
+      "description": "Username-targeted group invitations."
+    },
+    "/groupInviteLinks/{inviteCode}": {
+      "schema": { "$ref": "#/entities/GroupInviteLink" },
+      "description": "Shareable invitation code tokens for private groups."
+    }
+  }
+}
+
